@@ -84,3 +84,28 @@ canvas {
   font-size: 16px;
   color: #555;
 }
+
+/* Click-to-explore hint */
+#hint {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+#hint p {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.hint-sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}

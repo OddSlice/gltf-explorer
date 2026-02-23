@@ -1,9 +1,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+// ── Constants ──
+const EYE_HEIGHT = 1.7;
+const WALK_SPEED = 4;          // units per second
 
 // ── DOM refs ──
 const dropzone = document.getElementById('dropzone');
 const loader   = document.getElementById('loader');
+const hint     = document.getElementById('hint');
 
 // ── Renderer ──
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -23,7 +29,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000
 );
-camera.position.set(0, 1.7, 5);
+camera.position.set(0, EYE_HEIGHT, 5);
 camera.lookAt(0, 0, 0);
 
 // ── Floor ──
@@ -43,6 +49,70 @@ scene.add(dirLight);
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
 scene.add(ambientLight);
 
+// ═══════════════════════════════════════════════════
+//  First-person controls (PointerLockControls + WASD)
+// ═══════════════════════════════════════════════════
+
+const controls = new PointerLockControls(camera, renderer.domElement);
+
+// Track which movement keys are held
+const keys = { forward: false, backward: false, left: false, right: false };
+
+document.addEventListener('keydown', (e) => {
+  switch (e.code) {
+    case 'KeyW': case 'ArrowUp':    keys.forward  = true; break;
+    case 'KeyS': case 'ArrowDown':  keys.backward = true; break;
+    case 'KeyA': case 'ArrowLeft':  keys.left     = true; break;
+    case 'KeyD': case 'ArrowRight': keys.right    = true; break;
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  switch (e.code) {
+    case 'KeyW': case 'ArrowUp':    keys.forward  = false; break;
+    case 'KeyS': case 'ArrowDown':  keys.backward = false; break;
+    case 'KeyA': case 'ArrowLeft':  keys.left     = false; break;
+    case 'KeyD': case 'ArrowRight': keys.right    = false; break;
+  }
+});
+
+// Show hint again when pointer lock is released
+controls.addEventListener('unlock', () => {
+  if (hint && !hint.hidden) return;        // already visible
+  if (dropzone && !dropzone.hidden) return; // still on drop screen
+  hint.hidden = false;
+});
+
+// Click on the hint overlay to lock
+hint.addEventListener('click', () => {
+  controls.lock();
+});
+controls.addEventListener('lock', () => {
+  hint.hidden = true;
+});
+
+// ── Movement helper — called every frame ──
+const direction = new THREE.Vector3();
+
+function updateMovement(delta) {
+  if (!controls.isLocked) return;
+
+  const speed = WALK_SPEED * delta;
+
+  direction.set(0, 0, 0);
+  if (keys.forward)  direction.z -= 1;
+  if (keys.backward) direction.z += 1;
+  if (keys.left)     direction.x -= 1;
+  if (keys.right)    direction.x += 1;
+  direction.normalize();
+
+  if (direction.z !== 0) controls.moveForward(-direction.z * speed);
+  if (direction.x !== 0) controls.moveRight(direction.x * speed);
+
+  // Lock camera to eye height — no flying, no falling
+  camera.position.y = EYE_HEIGHT;
+}
+
 // ── Resize ──
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -51,7 +121,11 @@ window.addEventListener('resize', () => {
 });
 
 // ── Render loop ──
+const clock = new THREE.Clock();
+
 function animate() {
+  const delta = clock.getDelta();
+  updateMovement(delta);
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
@@ -130,6 +204,8 @@ dropzone.addEventListener('drop', async (e) => {
 
   try {
     await loadGltf(rootGltfPath, fileMap);
+    // Model loaded — show the "click to explore" hint
+    hint.hidden = false;
   } catch (err) {
     console.error(err);
     alert('Failed to load model: ' + err.message);
@@ -192,13 +268,12 @@ async function loadGltf(gltfPath, fileMap) {
 
   scene.add(model);
 
-  // Position camera: move back enough to see the whole model
-  const maxDim = Math.max(size.x, size.y, size.z);
-  const distance = maxDim * 1.5;
-  camera.position.set(0, Math.max(1.7, size.y * 0.6), distance);
-  camera.lookAt(0, size.y / 2, 0);
+  // Position camera roughly in the middle of the model, at eye height
+  camera.position.set(0, EYE_HEIGHT, 0);
+  camera.lookAt(0, EYE_HEIGHT, -1);
 
   // Scale floor to fit the model
+  const maxDim = Math.max(size.x, size.y, size.z);
   const floorSize = Math.max(20, maxDim * 3);
   floor.geometry.dispose();
   floor.geometry = new THREE.PlaneGeometry(floorSize, floorSize);

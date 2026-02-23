@@ -26,3 +26,13 @@ A browser-based 3D viewer for glTF models, built with plain HTML, CSS, and JavaS
 - Floor plane scales to fit large models
 - Loading spinner overlay while the model is being parsed
 - Error handling with user-facing alerts
+
+**Phase 3 — First-person controls**
+
+- PointerLockControls for mouse-look (click to lock, Escape to release)
+- WASD / arrow key movement at a walking pace (4 units/sec)
+- Delta-time-based movement for consistent speed regardless of frame rate
+- Camera locked to eye height (1.7 units) — no flying or falling
+- "Click to explore" hint overlay shown after a model loads
+- Hint reappears when pointer lock is released, hides on re-lock
+- Camera starts at the center of the loaded model for immediate exploration

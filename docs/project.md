@@ -47,3 +47,14 @@ A browser-based 3D viewer for glTF models, built with plain HTML, CSS, and JavaS
 - Drop zone, loader, hint, HUD, and button visibility are all managed as a coherent state machine
 - Full-viewport responsive layout (html/body 100% width/height, canvas fills container)
 - Dark-themed drop zone and loader overlays match the immersive palette
+
+**Phase 5 — Wall and floor collision**
+
+- Raycaster-based collision system in its own clearly commented section
+- Four horizontal rays (±X, ±Z) detect walls; blocked axes are zeroed independently so the player slides along surfaces rather than sticking
+- Downward ray from above the player snaps camera to whatever surface is below (floor, ramp, raised platform)
+- If no floor is detected (player walks off the edge of the scan), the last valid height is preserved
+- Collision only tests meshes from the loaded GLTF model — helper objects (scene floor, lights) are excluded
+- All collision distances (WALL_DISTANCE, FLOOR_RAY_HEIGHT, FLOOR_RAY_LENGTH) and WALK_SPEED are tunable constants at the top of main.js
+- Movement refactored to world-space vectors derived from camera direction, enabling correct collision checks regardless of look angle
+- Collidable mesh list is rebuilt on each model load and cleared on "Load new scan"

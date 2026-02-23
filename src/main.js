@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ── Tunable constants ──────────────────────────────
 const EYE_HEIGHT       = 1.7;   // camera height above the floor surface
@@ -9,7 +8,6 @@ const WALK_SPEED       = 4;     // units per second
 const WALL_DISTANCE    = 0.5;   // min gap between player and walls
 const FLOOR_RAY_HEIGHT = 10;    // how far above the player to start the down-ray
 const FLOOR_RAY_LENGTH = 50;    // max distance the floor ray travels downward
-const MAX_PIXEL_RATIO  = 1.5;   // cap device pixel ratio for performance
 // ───────────────────────────────────────────────────
 
 // ── DOM refs ──
@@ -25,13 +23,14 @@ const loadNewBtn  = document.getElementById('load-new');
 // ── State ──
 let modelLoaded = false;
 let currentModel = null;
-let collisionMesh = null;    // single merged mesh used for all raycasts
+let collidableMeshes = [];   // meshes from the GLTF that receive collision
 let lastValidY = EYE_HEIGHT; // fallback height when no floor is detected
 
 // ── Renderer ──
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
 // ── Scene ──
@@ -110,75 +109,72 @@ controls.addEventListener('lock', () => {
 // ═══════════════════════════════════════════════════
 //  Collision system (raycaster-based)
 //
-//  Performance strategy:
-//    All GLTF meshes are merged into ONE BufferGeometry at load
-//    time. Raycasts hit a single mesh instead of iterating hundreds.
-//    Raycasters use firstHitOnly = true so they stop at the nearest
-//    intersection. All scratch vectors are pre-allocated (zero GC).
-//
 //  Wall collision:
 //    Four horizontal rays (±X, ±Z in world space) are cast from
-//    the player's chest height. If any ray hits within WALL_DISTANCE,
-//    the movement component along that axis is zeroed — the player
-//    slides along walls instead of getting stuck.
+//    the player's chest height. If any ray hits a collidable mesh
+//    within WALL_DISTANCE, the proposed movement component in that
+//    direction is zeroed out — so the player slides along walls
+//    instead of getting stuck.
 //
 //  Floor collision:
-//    A single downward ray snaps the camera to whatever surface is
-//    below. If nothing is hit, the last valid height is kept.
+//    A single downward ray is cast from well above the player.
+//    If it hits a collidable mesh, the player's Y is set so the
+//    camera sits EYE_HEIGHT above that surface. If nothing is hit
+//    (walked off the edge), the last valid height is kept.
 // ═══════════════════════════════════════════════════
 
 const wallRaycaster  = new THREE.Raycaster();
 const floorRaycaster = new THREE.Raycaster();
-wallRaycaster.firstHitOnly  = true;
-floorRaycaster.firstHitOnly = true;
-
-// Pre-allocated scratch vectors (no per-frame allocations)
-const _wallOrigin  = new THREE.Vector3();
-const _floorOrigin = new THREE.Vector3();
-const _down        = new THREE.Vector3(0, -1, 0);
-const _forward     = new THREE.Vector3();
-const _right       = new THREE.Vector3();
-const _up          = new THREE.Vector3(0, 1, 0);
-const _moveDir     = new THREE.Vector3();
 
 // The four cardinal world-space directions for wall checks
 const wallDirections = [
-  new THREE.Vector3( 0, 0, -1),  // +Z forward
-  new THREE.Vector3( 0, 0,  1),  // -Z backward
+  new THREE.Vector3( 0, 0, -1),  // forward  (+Z camera looks -Z)
+  new THREE.Vector3( 0, 0,  1),  // backward
   new THREE.Vector3(-1, 0,  0),  // left
   new THREE.Vector3( 1, 0,  0),  // right
 ];
 
+/**
+ * Returns a Set of blocked world-axis directions based on wall ray hits.
+ * Each entry is one of the wallDirections references.
+ */
 function getBlockedDirections(position) {
-  if (!collisionMesh) return null;
+  if (collidableMeshes.length === 0) return new Set();
 
-  _wallOrigin.set(position.x, position.y - 0.3, position.z);
-
-  let blockedX = 0;  // -1, 0, or 1 to indicate which X side is blocked
-  let blockedZ = 0;
+  const blocked = new Set();
+  const origin = new THREE.Vector3(position.x, position.y - 0.3, position.z);
+  // Cast from chest height (eye minus a bit) so low walls are detected
 
   for (const dir of wallDirections) {
-    wallRaycaster.set(_wallOrigin, dir);
+    wallRaycaster.set(origin, dir);
     wallRaycaster.far = WALL_DISTANCE;
 
-    const hits = wallRaycaster.intersectObject(collisionMesh);
+    const hits = wallRaycaster.intersectObjects(collidableMeshes, false);
     if (hits.length > 0) {
-      if (dir.x !== 0) blockedX = dir.x;
-      if (dir.z !== 0) blockedZ = dir.z;
+      blocked.add(dir);
     }
   }
-  return { blockedX, blockedZ };
+  return blocked;
 }
 
+/**
+ * Returns the Y position the player should stand at, or null if no
+ * floor surface was found beneath them.
+ */
 function getFloorY(position) {
-  if (!collisionMesh) return null;
+  if (collidableMeshes.length === 0) return null;
 
-  _floorOrigin.set(position.x, position.y + FLOOR_RAY_HEIGHT, position.z);
+  const origin = new THREE.Vector3(
+    position.x,
+    position.y + FLOOR_RAY_HEIGHT,
+    position.z
+  );
+  const down = new THREE.Vector3(0, -1, 0);
 
-  floorRaycaster.set(_floorOrigin, _down);
+  floorRaycaster.set(origin, down);
   floorRaycaster.far = FLOOR_RAY_LENGTH;
 
-  const hits = floorRaycaster.intersectObject(collisionMesh);
+  const hits = floorRaycaster.intersectObjects(collidableMeshes, false);
   if (hits.length > 0) {
     return hits[0].point.y + EYE_HEIGHT;
   }
@@ -186,40 +182,49 @@ function getFloorY(position) {
 }
 
 // ── Movement (called every frame) ──
+const moveDirection = new THREE.Vector3();
+
 function updateMovement(delta) {
   if (!controls.isLocked) return;
 
   const speed = WALK_SPEED * delta;
 
-  // Camera forward projected onto XZ
-  camera.getWorldDirection(_forward);
-  _forward.y = 0;
-  _forward.normalize();
+  // Build a world-space movement vector from WASD input
+  // Camera forward projected onto the XZ plane
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
 
-  _right.crossVectors(_forward, _up).normalize();
+  const right = new THREE.Vector3();
+  right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-  _moveDir.set(0, 0, 0);
-  if (keys.forward)  _moveDir.add(_forward);
-  if (keys.backward) _moveDir.sub(_forward);
-  if (keys.right)    _moveDir.add(_right);
-  if (keys.left)     _moveDir.sub(_right);
-  _moveDir.normalize().multiplyScalar(speed);
+  moveDirection.set(0, 0, 0);
+  if (keys.forward)  moveDirection.add(forward);
+  if (keys.backward) moveDirection.sub(forward);
+  if (keys.right)    moveDirection.add(right);
+  if (keys.left)     moveDirection.sub(right);
+  moveDirection.normalize().multiplyScalar(speed);
 
   // ── Wall collision: zero out blocked components ──
-  if (collisionMesh && (_moveDir.x !== 0 || _moveDir.z !== 0)) {
-    const { blockedX, blockedZ } = getBlockedDirections(camera.position);
+  if (collidableMeshes.length > 0 && (moveDirection.x !== 0 || moveDirection.z !== 0)) {
+    const blocked = getBlockedDirections(camera.position);
 
-    if (blockedX !== 0 && Math.sign(_moveDir.x) === blockedX) {
-      _moveDir.x = 0;
-    }
-    if (blockedZ !== 0 && Math.sign(_moveDir.z) === blockedZ) {
-      _moveDir.z = 0;
+    for (const dir of blocked) {
+      // If movement has a component in the blocked direction, remove it
+      // This gives the "slide along walls" feel
+      if (dir.x !== 0 && Math.sign(moveDirection.x) === Math.sign(dir.x)) {
+        moveDirection.x = 0;
+      }
+      if (dir.z !== 0 && Math.sign(moveDirection.z) === Math.sign(dir.z)) {
+        moveDirection.z = 0;
+      }
     }
   }
 
   // Apply horizontal movement
-  camera.position.x += _moveDir.x;
-  camera.position.z += _moveDir.z;
+  camera.position.x += moveDirection.x;
+  camera.position.z += moveDirection.z;
 
   // ── Floor collision: snap to surface ──
   const floorY = getFloorY(camera.position);
@@ -227,6 +232,7 @@ function updateMovement(delta) {
     camera.position.y = floorY;
     lastValidY = floorY;
   } else {
+    // No floor detected — keep last valid height
     camera.position.y = lastValidY;
   }
 }
@@ -269,10 +275,7 @@ loadNewBtn.addEventListener('click', () => {
     currentModel = null;
   }
 
-  if (collisionMesh) {
-    collisionMesh.geometry.dispose();
-    collisionMesh = null;
-  }
+  collidableMeshes = [];
   modelLoaded = false;
   lastValidY = EYE_HEIGHT;
   hint.hidden = true;
@@ -426,34 +429,13 @@ async function loadGltf(gltfPath, fileMap) {
   scene.add(model);
   currentModel = model;
 
-  // ── Build a single merged collision mesh from all GLTF geometry ──
-  //    This is the key performance optimisation: raycasting against one
-  //    merged BufferGeometry is orders of magnitude faster than testing
-  //    hundreds of individual meshes every frame.
-  const geometries = [];
-  model.updateMatrixWorld(true);
+  // ── Collect collidable meshes from the GLTF only ──
+  collidableMeshes = [];
   model.traverse((child) => {
     if (child.isMesh) {
-      const geo = child.geometry.clone();
-      geo.applyMatrix4(child.matrixWorld);
-      // Ensure we only keep position data for collision (save memory)
-      for (const key of Object.keys(geo.attributes)) {
-        if (key !== 'position') geo.deleteAttribute(key);
-      }
-      geo.setIndex(null);  // de-index for mergeGeometries compatibility
-      geometries.push(geo);
+      collidableMeshes.push(child);
     }
   });
-
-  if (geometries.length > 0) {
-    const merged = mergeGeometries(geometries);
-    collisionMesh = new THREE.Mesh(merged);
-    // Not added to scene — used for raycasting only
-    // Clean up temp clones
-    geometries.forEach((g) => g.dispose());
-  } else {
-    collisionMesh = null;
-  }
 
   // Position camera in the middle, at eye height
   camera.position.set(0, EYE_HEIGHT, 0);

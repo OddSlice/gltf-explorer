@@ -13,6 +13,11 @@ html, body {
   background: #1a1a1a;
 }
 
+/* Ensure the hidden attribute always wins over display:flex / display:block */
+[hidden] {
+  display: none !important;
+}
+
 canvas {
   display: block;
   width: 100%;

@@ -7,6 +7,17 @@
   <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
+  <div id="dropzone">
+    <div class="dropzone-content">
+      <div class="dropzone-icon">&#x1F4E6;</div>
+      <p>Drop your GLTF scan here</p>
+      <span class="dropzone-hint">.gltf, .glb, or a folder</span>
+    </div>
+  </div>
+  <div id="loader" hidden>
+    <div class="spinner"></div>
+    <p>Loading model…</p>
+  </div>
   <script type="importmap">
     {
       "imports": {

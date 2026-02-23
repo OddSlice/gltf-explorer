@@ -14,3 +14,15 @@ A browser-based 3D viewer for glTF models, built with plain HTML, CSS, and JavaS
 - Directional light with shadows and ambient fill light
 - Responsive window resize handling
 - Continuous render loop
+
+**Phase 2 — GLTF drag-and-drop loader**
+
+- Full-page drop zone with visual feedback shown before any model is loaded
+- Supports dropping individual .gltf/.glb files or entire folders
+- Folder drops recursively resolve associated textures and .bin buffers
+- Uses a custom LoadingManager with blob URLs so GLTFLoader can resolve relative paths
+- Auto-centers the model at the origin and raises it onto the floor
+- Camera repositions to frame the loaded model based on its bounding box
+- Floor plane scales to fit large models
+- Loading spinner overlay while the model is being parsed
+- Error handling with user-facing alerts

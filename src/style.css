@@ -4,17 +4,22 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: #333;
+  color: #eee;
+  background: #1a1a1a;
 }
 
 canvas {
   display: block;
+  width: 100%;
+  height: 100%;
 }
 
-/* Drop zone */
+/* ── Drop zone ── */
 #dropzone {
   position: fixed;
   inset: 0;
@@ -22,20 +27,20 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: #1a1a1a;
 }
 
 .dropzone-content {
   text-align: center;
   padding: 60px 80px;
-  border: 3px dashed #bbb;
+  border: 3px dashed #444;
   border-radius: 16px;
   transition: border-color 0.2s, background 0.2s;
 }
 
 #dropzone.drag-over .dropzone-content {
   border-color: #4a90d9;
-  background: rgba(74, 144, 217, 0.06);
+  background: rgba(74, 144, 217, 0.08);
 }
 
 .dropzone-icon {
@@ -47,45 +52,61 @@ canvas {
   font-size: 20px;
   font-weight: 600;
   margin-bottom: 8px;
+  color: #eee;
 }
 
 .dropzone-hint {
   font-size: 14px;
-  color: #888;
+  color: #777;
 }
 
-/* Loading indicator */
+/* ── Loading overlay + progress bar ── */
 #loader {
   position: fixed;
   inset: 0;
   z-index: 20;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  background: rgba(245, 245, 245, 0.92);
+  background: rgba(26, 26, 26, 0.94);
 }
 
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #ddd;
-  border-top-color: #4a90d9;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.loader-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(320px, 80vw);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+#loader-text {
+  font-size: 15px;
+  color: #bbb;
 }
 
-#loader p {
-  font-size: 16px;
-  color: #555;
+.progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #333;
+  overflow: hidden;
 }
 
-/* Click-to-explore hint */
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: #4a90d9;
+  transition: width 0.15s ease;
+}
+
+.progress-pct {
+  font-size: 12px;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Click-to-explore hint ── */
 #hint {
   position: fixed;
   inset: 0;
@@ -95,7 +116,7 @@ canvas {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.50);
   cursor: pointer;
 }
 
@@ -107,5 +128,45 @@ canvas {
 
 .hint-sub {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Controls HUD (bottom-left) ── */
+#hud {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 5;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+  user-select: none;
+}
+
+#hud span {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── Load new scan button ── */
+#load-new {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #ddd;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+#load-new:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
 }

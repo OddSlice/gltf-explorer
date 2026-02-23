@@ -36,3 +36,14 @@ A browser-based 3D viewer for glTF models, built with plain HTML, CSS, and JavaS
 - "Click to explore" hint overlay shown after a model loads
 - Hint reappears when pointer lock is released, hides on re-lock
 - Camera starts at the center of the loaded model for immediate exploration
+
+**Phase 4 — Polish and UX improvements**
+
+- Dark grey/near-black background and floor for an immersive feel
+- Loading progress bar with percentage readout driven by LoadingManager.onProgress
+- Subtle controls HUD in the bottom-left corner (visible only while exploring)
+- "Load new scan" button appears in the top-right when the mouse is unlocked
+- Loading a new scan cleanly disposes of the previous model, resets floor and camera
+- Drop zone, loader, hint, HUD, and button visibility are all managed as a coherent state machine
+- Full-viewport responsive layout (html/body 100% width/height, canvas fills container)
+- Dark-themed drop zone and loader overlays match the immersive palette

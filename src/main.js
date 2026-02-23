@@ -7,9 +7,18 @@ const EYE_HEIGHT = 1.7;
 const WALK_SPEED = 4;          // units per second
 
 // ── DOM refs ──
-const dropzone = document.getElementById('dropzone');
-const loader   = document.getElementById('loader');
-const hint     = document.getElementById('hint');
+const dropzone    = document.getElementById('dropzone');
+const loaderEl    = document.getElementById('loader');
+const loaderText  = document.getElementById('loader-text');
+const progressBar = document.getElementById('progress-bar');
+const progressPct = document.getElementById('progress-pct');
+const hint        = document.getElementById('hint');
+const hud         = document.getElementById('hud');
+const loadNewBtn  = document.getElementById('load-new');
+
+// ── State ──
+let modelLoaded = false;
+let currentModel = null;
 
 // ── Renderer ──
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -20,7 +29,7 @@ document.body.appendChild(renderer.domElement);
 
 // ── Scene ──
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
+scene.background = new THREE.Color(0x1a1a1a);
 
 // ── Camera — eye height at 1.7 units ──
 const camera = new THREE.PerspectiveCamera(
@@ -33,8 +42,8 @@ camera.position.set(0, EYE_HEIGHT, 5);
 camera.lookAt(0, 0, 0);
 
 // ── Floor ──
-const floorGeometry = new THREE.PlaneGeometry(20, 20);
-const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+let floorGeometry = new THREE.PlaneGeometry(20, 20);
+const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a });
 const floor = new THREE.Mesh(floorGeometry, floorMaterial);
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
@@ -76,11 +85,12 @@ document.addEventListener('keyup', (e) => {
   }
 });
 
-// Show hint again when pointer lock is released
+// Show hint + load-new button when pointer lock is released
 controls.addEventListener('unlock', () => {
-  if (hint && !hint.hidden) return;        // already visible
-  if (dropzone && !dropzone.hidden) return; // still on drop screen
+  if (!modelLoaded) return;
   hint.hidden = false;
+  loadNewBtn.hidden = false;
+  hud.hidden = true;
 });
 
 // Click on the hint overlay to lock
@@ -89,6 +99,8 @@ hint.addEventListener('click', () => {
 });
 controls.addEventListener('lock', () => {
   hint.hidden = true;
+  loadNewBtn.hidden = true;
+  hud.hidden = false;
 });
 
 // ── Movement helper — called every frame ──
@@ -132,6 +144,42 @@ function animate() {
 animate();
 
 // ═══════════════════════════════════════════════════
+//  "Load new scan" button
+// ═══════════════════════════════════════════════════
+
+loadNewBtn.addEventListener('click', () => {
+  // Remove the current model from the scene
+  if (currentModel) {
+    scene.remove(currentModel);
+    currentModel.traverse((child) => {
+      if (child.isMesh) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m) => m.dispose());
+        } else if (child.material) {
+          child.material.dispose();
+        }
+      }
+    });
+    currentModel = null;
+  }
+
+  modelLoaded = false;
+  hint.hidden = true;
+  hud.hidden = true;
+  loadNewBtn.hidden = true;
+  dropzone.hidden = false;
+
+  // Reset floor
+  floor.geometry.dispose();
+  floor.geometry = new THREE.PlaneGeometry(20, 20);
+
+  // Reset camera
+  camera.position.set(0, EYE_HEIGHT, 5);
+  camera.lookAt(0, 0, 0);
+});
+
+// ═══════════════════════════════════════════════════
 //  Drag-and-drop GLTF loader
 // ═══════════════════════════════════════════════════
 
@@ -165,7 +213,6 @@ dropzone.addEventListener('drop', async (e) => {
     } else if (entry.isDirectory) {
       const reader = entry.createReader();
       let entries = [];
-      // readEntries may return results in batches
       let batch;
       do {
         batch = await new Promise((res) => reader.readEntries(res));
@@ -177,7 +224,6 @@ dropzone.addEventListener('drop', async (e) => {
     }
   }
 
-  // Gather all files from the drop (handles both files and folders)
   for (const item of items) {
     const entry = item.webkitGetAsEntry?.();
     if (entry) {
@@ -198,40 +244,51 @@ dropzone.addEventListener('drop', async (e) => {
     return;
   }
 
-  // Show loader, hide dropzone
+  // Show loader, hide dropzone, reset progress
   dropzone.hidden = true;
-  loader.hidden = false;
+  loaderEl.hidden = false;
+  setProgress(0);
 
   try {
     await loadGltf(rootGltfPath, fileMap);
-    // Model loaded — show the "click to explore" hint
+    modelLoaded = true;
     hint.hidden = false;
   } catch (err) {
     console.error(err);
     alert('Failed to load model: ' + err.message);
     dropzone.hidden = false;
   } finally {
-    loader.hidden = true;
+    loaderEl.hidden = true;
   }
 });
+
+// ── Progress helper ──
+function setProgress(pct) {
+  const clamped = Math.min(100, Math.max(0, Math.round(pct)));
+  progressBar.style.width = clamped + '%';
+  progressPct.textContent = clamped + ' %';
+}
 
 // ── Load a GLTF from the collected file map ──
 async function loadGltf(gltfPath, fileMap) {
   const gltfLoader = new GLTFLoader();
 
   // Build blob-URL manager so GLTFLoader can resolve relative paths
-  // (textures, .bin buffers referenced by a .gltf file)
   const blobURLs = new Map();
   const baseDir = gltfPath.includes('/')
     ? gltfPath.substring(0, gltfPath.lastIndexOf('/') + 1)
     : '';
 
   const manager = new THREE.LoadingManager();
+
+  // Progress callback
+  manager.onProgress = (_url, loaded, total) => {
+    if (total > 0) setProgress((loaded / total) * 100);
+  };
+
   manager.setURLModifier((url) => {
-    // url may be an absolute blob already
     if (url.startsWith('blob:')) return url;
 
-    // Try to resolve relative to the gltf file
     const candidates = [url, baseDir + url];
     for (const candidate of candidates) {
       if (fileMap.has(candidate)) {
@@ -246,7 +303,6 @@ async function loadGltf(gltfPath, fileMap) {
 
   gltfLoader.manager = manager;
 
-  // Create a blob URL for the root gltf/glb file
   const rootBlob = URL.createObjectURL(fileMap.get(gltfPath));
 
   const gltf = await gltfLoader.loadAsync(rootBlob);
@@ -255,24 +311,26 @@ async function loadGltf(gltfPath, fileMap) {
   URL.revokeObjectURL(rootBlob);
   for (const url of blobURLs.values()) URL.revokeObjectURL(url);
 
+  setProgress(100);
+
   const model = gltf.scene;
 
-  // Auto-center: compute bounding box, shift model so its center sits at the origin
+  // Auto-center
   const box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
   const size   = box.getSize(new THREE.Vector3());
 
   model.position.sub(center);
-  // Raise the model so its bottom sits on the floor
   model.position.y += size.y / 2;
 
   scene.add(model);
+  currentModel = model;
 
-  // Position camera roughly in the middle of the model, at eye height
+  // Position camera in the middle of the model
   camera.position.set(0, EYE_HEIGHT, 0);
   camera.lookAt(0, EYE_HEIGHT, -1);
 
-  // Scale floor to fit the model
+  // Scale floor to fit
   const maxDim = Math.max(size.x, size.y, size.z);
   const floorSize = Math.max(20, maxDim * 3);
   floor.geometry.dispose();

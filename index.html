@@ -15,13 +15,22 @@
     </div>
   </div>
   <div id="loader" hidden>
-    <div class="spinner"></div>
-    <p>Loading model…</p>
+    <div class="loader-inner">
+      <p id="loader-text">Loading model…</p>
+      <div class="progress-track">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <span class="progress-pct" id="progress-pct">0 %</span>
+    </div>
   </div>
   <div id="hint" hidden>
     <p>Click to explore</p>
     <span class="hint-sub">WASD to move &middot; Mouse to look &middot; Esc to release</span>
   </div>
+  <div id="hud" hidden>
+    <span>WASD</span> move &middot; <span>Mouse</span> look &middot; <span>Esc</span> release
+  </div>
+  <button id="load-new" hidden>Load new scan</button>
   <script type="importmap">
     {
       "imports": {
